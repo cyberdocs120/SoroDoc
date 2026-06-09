@@ -10,8 +10,13 @@ import type {
   ErrorSpec,
   TypeDefinition,
 } from '../types.js';
+import { EventParser } from './EventParser.js';
+import { ErrorParser } from './ErrorParser.js';
 
 export class ABIParser {
+  private eventParser = new EventParser();
+  private errorParser = new ErrorParser();
+
   parse(options: { wasm: Buffer; contractName?: string }): ContractABI {
     const specEntries = this.extractSpecEntries(options.wasm);
     return this.convertToABI(specEntries, options.contractName);
@@ -105,12 +110,11 @@ export class ABIParser {
           break;
         }
         case 4: {
-          const parsed = this.convertErrorEnum(entry.udtErrorEnumV0());
-          errors.push(...parsed);
+          errors.push(...this.errorParser.parse(entry.udtErrorEnumV0(), this.bufToString.bind(this)));
           break;
         }
         case 5: {
-          events.push(this.convertEvent(entry.eventV0()));
+          events.push(this.eventParser.parse(entry.eventV0(), this.convertTypeDef.bind(this), this.bufToString.bind(this)));
           break;
         }
       }
@@ -212,48 +216,6 @@ export class ABIParser {
         })),
       },
     };
-  }
-
-  private convertErrorEnum(errorEnum: xdr.ScSpecUdtErrorEnumV0): ErrorSpec[] {
-    const cases = errorEnum.cases();
-    return cases.map((c: xdr.ScSpecUdtErrorEnumCaseV0) => ({
-      code: c.value(),
-      name: this.bufToString(c.name()),
-    }));
-  }
-
-  private convertEvent(event: xdr.ScSpecEventV0): EventSpec {
-    const name = this.bufToString(event.name());
-    const prefixTopics = event.prefixTopics();
-    const params = event.params();
-
-    const topicParams = params.filter(
-      (p: xdr.ScSpecEventParamV0) => p.location().value === 1,
-    );
-    const dataParams = params.filter(
-      (p: xdr.ScSpecEventParamV0) => p.location().value === 0,
-    );
-
-    const topics: EventTopic[] = prefixTopics.map((t: Buffer | string, index: number) => ({
-      index,
-      name: typeof t === 'string' ? t : t.toString(),
-      type: { kind: 'symbol' },
-    }));
-
-    topicParams.forEach((p: xdr.ScSpecEventParamV0, i: number) => {
-      topics.push({
-        index: prefixTopics.length + i,
-        name: this.bufToString(p.name()),
-        type: this.convertTypeDef(p.type()),
-      });
-    });
-
-    const data: EventField[] = dataParams.map((p: xdr.ScSpecEventParamV0) => ({
-      name: this.bufToString(p.name()),
-      type: this.convertTypeDef(p.type()),
-    }));
-
-    return { name, topics, data };
   }
 
   convertTypeDef(typeDef: xdr.ScSpecTypeDef): SorobanType {
