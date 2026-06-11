@@ -3,6 +3,11 @@ export { ABIParser } from './parser/ABIParser.js';
 export { SourceParser } from './parser/SourceParser.js';
 export { EventParser } from './parser/EventParser.js';
 export { ErrorParser } from './parser/ErrorParser.js';
+export { DocEngine } from './ai/DocEngine.js';
+export { FunctionDocWriter } from './ai/FunctionDocWriter.js';
+export { ErrorDocWriter } from './ai/ErrorDocWriter.js';
+export { ExampleGenerator } from './ai/ExampleGenerator.js';
+export { ValidationPass } from './ai/ValidationPass.js';
 
 import { ABIParser } from './parser/ABIParser.js';
 import { SourceParser } from './parser/SourceParser.js';
