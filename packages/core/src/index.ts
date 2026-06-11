@@ -8,6 +8,9 @@ export { FunctionDocWriter } from './ai/FunctionDocWriter.js';
 export { ErrorDocWriter } from './ai/ErrorDocWriter.js';
 export { ExampleGenerator } from './ai/ExampleGenerator.js';
 export { ValidationPass } from './ai/ValidationPass.js';
+export { MarkdownRenderer } from './renderers/MarkdownRenderer.js';
+export { DocusaurusRenderer } from './renderers/DocusaurusRenderer.js';
+export { OpenAPIRenderer } from './renderers/OpenAPIRenderer.js';
 
 import { ABIParser } from './parser/ABIParser.js';
 import { SourceParser } from './parser/SourceParser.js';
