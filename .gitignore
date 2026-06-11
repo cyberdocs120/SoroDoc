@@ -7,3 +7,4 @@ coverage/
 *.wasm
 *.log
 .DS_Store
+PLAN.md
