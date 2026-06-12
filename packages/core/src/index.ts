@@ -11,6 +11,9 @@ export { ValidationPass } from './ai/ValidationPass.js';
 export { MarkdownRenderer } from './renderers/MarkdownRenderer.js';
 export { DocusaurusRenderer } from './renderers/DocusaurusRenderer.js';
 export { OpenAPIRenderer } from './renderers/OpenAPIRenderer.js';
+export { generateTypeScriptSDK, type TypeScriptSDKOptions } from './codegen/TypeScriptSDK.js';
+export { generatePythonSDK, type PythonSDKOptions } from './codegen/PythonSDK.js';
+export { generateRustClient, type RustClientOptions } from './codegen/RustClient.js';
 
 import { ABIParser } from './parser/ABIParser.js';
 import { SourceParser } from './parser/SourceParser.js';
