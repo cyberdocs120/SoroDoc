@@ -1,0 +1,11 @@
+openapi: "3.1.0"
+info:
+  title: "{{CONTRACT_NAME}} — Soroban Contract API"
+  version: "{{VERSION}}"
+  description: "{{DESCRIPTION}}"
+servers:
+  - url: "{{RPC_URL}}"
+    description: "{{NETWORK}}"
+paths: {}
+components:
+  schemas: {}
