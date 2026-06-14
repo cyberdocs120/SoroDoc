@@ -184,7 +184,7 @@ describe('OpenAPIRenderer', () => {
 
     expect(result.openapi).toBeDefined();
 
-    const specPath = path.join(tmpDir, 'openapi.yaml');
+    const specPath = path.join(tmpDir, 'openapi.json');
     expect(fs.existsSync(specPath)).toBe(true);
 
     const content = fs.readFileSync(specPath, 'utf8');
@@ -201,7 +201,7 @@ describe('OpenAPIRenderer', () => {
     });
     renderer.render(makeDocOutput());
 
-    const content = fs.readFileSync(path.join(tmpDir, 'openapi.yaml'), 'utf8');
+    const content = fs.readFileSync(path.join(tmpDir, 'openapi.json'), 'utf8');
     expect(content).toContain('soroban-rpc.mainnet.stellar.org');
   });
 
@@ -209,7 +209,7 @@ describe('OpenAPIRenderer', () => {
     const renderer = new OpenAPIRenderer({ outputDir: tmpDir });
     renderer.render(makeDocOutput());
 
-    const content = fs.readFileSync(path.join(tmpDir, 'openapi.yaml'), 'utf8');
+    const content = fs.readFileSync(path.join(tmpDir, 'openapi.json'), 'utf8');
     expect(content).toContain('Error_InsufficientBalance');
     expect(content).toContain('"code"');
     expect(content).toContain('"message"');

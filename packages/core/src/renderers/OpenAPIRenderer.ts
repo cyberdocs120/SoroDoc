@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { DocOutput, DocFunction, GeneratedOutput } from '../types.js';
+import { DocOutput, DocFunction, GeneratedOutput, SorobanType } from '../types.js';
 
 export interface OpenAPIRendererOptions {
   outputDir: string;
@@ -22,7 +22,7 @@ export class OpenAPIRenderer {
     fs.mkdirSync(baseDir, { recursive: true });
 
     const content = JSON.stringify(spec, null, 2);
-    const filePath = path.join(baseDir, 'openapi.yaml');
+    const filePath = path.join(baseDir, 'openapi.json');
     fs.writeFileSync(filePath, content, 'utf8');
 
     return {
@@ -79,7 +79,7 @@ export class OpenAPIRenderer {
               schema: {
                 type: 'object',
                 properties: Object.fromEntries(
-                  fn.params.map(p => [p.name, { type: this.typeToSchema(p.type) }])
+                  fn.params.map(p => [p.name, this.typeToSchema(p.type)])
                 ),
                 required: fn.params.map(p => p.name),
               },
@@ -89,7 +89,7 @@ export class OpenAPIRenderer {
         responses: {
           '200': {
             description: 'Successful invocation',
-            content: { 'application/json': { schema: { type: this.typeToSchema(fn.returns.type) } } },
+            content: { 'application/json': { schema: this.typeToSchema(fn.returns.type) } },
           },
           ...errorResponses,
           '4xx': { description: 'Contract error' },
@@ -112,24 +112,53 @@ export class OpenAPIRenderer {
     return schemas;
   }
 
-  private typeToSchema(type: { kind: string }): string {
-    const mapping: Record<string, string> = {
-      bool: 'boolean',
-      i32: 'integer',
-      i64: 'integer',
-      i128: 'string',
-      i256: 'string',
-      u32: 'integer',
-      u64: 'integer',
-      u128: 'string',
-      u256: 'string',
-      address: 'string',
-      symbol: 'string',
-      string: 'string',
-      bytes: 'string',
-      void: 'null',
-      error: 'string',
-    };
-    return mapping[type.kind] || 'string';
+  private typeToSchema(type: SorobanType): Record<string, unknown> {
+    switch (type.kind) {
+      case 'bool':
+        return { type: 'boolean' };
+      case 'i32':
+      case 'u32':
+        return { type: 'integer' };
+      case 'i64':
+      case 'u64':
+        return { type: 'integer', format: 'int64' };
+      case 'i128':
+      case 'u128':
+      case 'i256':
+      case 'u256':
+        return { type: 'string', description: 'Large integer as string' };
+      case 'address':
+        return { type: 'string', description: 'Stellar address' };
+      case 'symbol':
+      case 'string':
+        return { type: 'string' };
+      case 'bytes':
+        return { type: 'string', format: 'byte' };
+      case 'vec':
+        return { type: 'array', items: this.typeToSchema(type.element) };
+      case 'map':
+        return {
+          type: 'object',
+          additionalProperties: this.typeToSchema(type.value),
+          description: 'Map representation',
+        };
+      case 'option':
+        return { ...this.typeToSchema(type.inner), nullable: true };
+      case 'struct':
+        return {
+          type: 'object',
+          properties: Object.fromEntries(
+            type.fields.map(f => [f.name, this.typeToSchema(f.type)])
+          ),
+          required: type.fields.map(f => f.name),
+        };
+      case 'enum':
+        return { type: 'string', enum: type.variants.map(v => v.name) };
+      case 'void':
+        return { type: 'null' };
+      default:
+        return { type: 'string' };
+    }
   }
 }
+
