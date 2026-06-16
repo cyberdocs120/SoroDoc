@@ -1,0 +1,45 @@
+replicaCount: 1
+
+image:
+  repository: sorodoc/api
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+service:
+  type: ClusterIP
+  port: 3000
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: api.sorodoc.io
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+env:
+  ANTHROPIC_API_KEY: ""
+  DATABASE_URL: "postgres://user:pass@postgres:5432/sorodoc"
+  REDIS_URL: "redis://redis:6379"
+  JWT_SECRET: "change-me"
