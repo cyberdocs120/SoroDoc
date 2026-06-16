@@ -1,0 +1,29 @@
+name: SoroDoc Generation
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'contracts/**'
+
+jobs:
+  generate-docs:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install SoroDoc CLI
+      run: npm install -g @sorodoc/cli
+
+    - name: Generate Documentation
+      run: |
+        sorodoc generate --wasm ./contracts/my_contract.wasm --out ./docs
+        sorodoc sdk --wasm ./contracts/my_contract.wasm --lang ts --out ./sdk
+
+    - name: Commit and Push
+      run: |
+        git config --global user.name "SoroDoc Bot"
+        git config --global user.email "bot@sorodoc.io"
+        git add docs/ sdk/
+        git commit -m "docs: auto-generate documentation and SDK" || echo "No changes to commit"
+        git push
