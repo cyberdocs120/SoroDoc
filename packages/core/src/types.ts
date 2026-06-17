@@ -1,3 +1,112 @@
+import { z } from 'zod';
+
+export const SorobanTypeSchema: z.ZodType<SorobanType> = z.lazy(() =>
+  z.union([
+    z.object({ kind: z.literal('val') }),
+    z.object({ kind: z.literal('address') }),
+    z.object({ kind: z.literal('bool') }),
+    z.object({ kind: z.literal('void') }),
+    z.object({ kind: z.literal('error') }),
+    z.object({ kind: z.literal('i32') }),
+    z.object({ kind: z.literal('i64') }),
+    z.object({ kind: z.literal('i128') }),
+    z.object({ kind: z.literal('i256') }),
+    z.object({ kind: z.literal('u32') }),
+    z.object({ kind: z.literal('u64') }),
+    z.object({ kind: z.literal('u128') }),
+    z.object({ kind: z.literal('u256') }),
+    z.object({ kind: z.literal('symbol') }),
+    z.object({ kind: z.literal('string') }),
+    z.object({ kind: z.literal('timepoint') }),
+    z.object({ kind: z.literal('duration') }),
+    z.object({ kind: z.literal('bytes'), len: z.number().optional() }),
+    z.object({ kind: z.literal('vec'), element: SorobanTypeSchema }),
+    z.object({ kind: z.literal('map'), key: SorobanTypeSchema, value: SorobanTypeSchema }),
+    z.object({ kind: z.literal('option'), inner: SorobanTypeSchema }),
+    z.object({ kind: z.literal('result'), ok: SorobanTypeSchema, error: SorobanTypeSchema }),
+    z.object({ kind: z.literal('tuple'), elements: z.array(SorobanTypeSchema) }),
+    z.object({
+      kind: z.literal('struct'),
+      name: z.string(),
+      fields: z.array(
+        z.object({
+          name: z.string(),
+          type: SorobanTypeSchema,
+          docs: z.string().optional(),
+        }),
+      ),
+    }),
+    z.object({
+      kind: z.literal('enum'),
+      name: z.string(),
+      variants: z.array(
+        z.object({
+          name: z.string(),
+          value: z.number().optional(),
+          docs: z.string().optional(),
+        }),
+      ),
+    }),
+    z.object({
+      kind: z.literal('union'),
+      name: z.string(),
+      cases: z.array(
+        z.object({
+          name: z.string(),
+          type: SorobanTypeSchema,
+          docs: z.string().optional(),
+        }),
+      ),
+    }),
+    z.object({ kind: z.literal('udt'), name: z.string() }),
+    z.object({ kind: z.literal('muxedAddress') }),
+  ]),
+);
+
+export const AIPromptConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  model: z.string().default('claude-sonnet-4-20250514'),
+  tone: z.enum(['technical', 'friendly', 'enterprise', 'educational']).default('technical'),
+  generateExamples: z.boolean().default(true),
+  exampleLanguages: z.array(z.string()).default(['typescript', 'python', 'rust']),
+  customInstructions: z.string().optional(),
+  glossary: z.record(z.string(), z.string()).optional(),
+});
+
+export const ConfigFileSchema = z.object({
+  project: z.object({
+    name: z.string(),
+    version: z.string(),
+    description: z.string(),
+    logo: z.string().optional(),
+    primaryColor: z.string().optional(),
+  }),
+  contracts: z.array(
+    z.object({
+      name: z.string(),
+      source: z.string().optional(),
+      wasm: z.string().optional(),
+      deployedId: z
+        .object({
+          testnet: z.string().optional(),
+          mainnet: z.string().optional(),
+        })
+        .optional(),
+      visibility: z.enum(['public', 'internal']).default('public'),
+      allowedRoles: z.array(z.string()).optional(),
+    }),
+  ),
+  ai: AIPromptConfigSchema.optional(),
+  output: z
+    .object({
+      formats: z.array(z.string()).optional(),
+      sdks: z.array(z.string()).optional(),
+      outputDir: z.string().optional(),
+      openapi: z.boolean().optional(),
+    })
+    .optional(),
+});
+
 export type SorobanType =
   | { kind: 'val' }
   | { kind: 'address' }

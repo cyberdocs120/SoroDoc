@@ -91,51 +91,93 @@ export class DocEngine {
 
     const totalSteps = 1 + abi.functions.length + 1;
 
-    this.options.onProgress?.('overview', 0, totalSteps);
-    const overview = await this.generateOverview(abi, config);
+    try {
+      this.options.onProgress?.('overview', 0, totalSteps);
+      const overview = await this.generateOverview(abi, config);
 
-    const functions: DocOutput['functions'] = [];
-    for (let i = 0; i < abi.functions.length; i++) {
-      this.options.onProgress?.('functions', i + 1, totalSteps);
-      const fn = abi.functions[i]!;
-      const docFn = await functionWriter.write(fn, abi.errors);
-      functions.push(docFn);
-    }
-
-    this.options.onProgress?.('errors', 1 + abi.functions.length, totalSteps);
-    const errors = await errorWriter.write(abi.errors);
-
-    if (config.generateExamples) {
-      for (let i = 0; i < functions.length; i++) {
+      const functions: DocOutput['functions'] = [];
+      for (let i = 0; i < abi.functions.length; i++) {
+        this.options.onProgress?.('functions', i + 1, totalSteps);
         const fn = abi.functions[i]!;
-        const docFn = functions[i]!;
-        if (docFn) {
-          docFn.examples = await exampleGenerator.generate(fn, docFn);
+        try {
+          const docFn = await functionWriter.write(fn, abi.errors);
+          functions.push(docFn);
+        } catch (err) {
+          console.warn(`Failed to generate documentation for function ${fn.name}: ${err}`);
+          functions.push({
+            name: fn.name,
+            description: fn.docs || `${fn.name} function`,
+            params: fn.params.map(p => ({
+              name: p.name,
+              type: p.type,
+              description: p.docs || '',
+            })),
+            returns: {
+              type: fn.returns,
+              description: '',
+            },
+          });
         }
       }
-    }
 
-    const result: DocOutput = {
-      contractName: abi.name,
-      overview,
-      functions,
-      events: abi.events.map(e => ({
-        name: e.name,
-        description: e.description || '',
-        topics: e.topics,
-        data: e.data,
-      })),
-      errors,
-    };
-
-    if (config.generateExamples) {
-      const validation = await validator.validate(result);
-      if (!validation.valid) {
-        console.warn('DocEngine validation warnings:', validation.warnings);
+      this.options.onProgress?.('errors', 1 + abi.functions.length, totalSteps);
+      let errors: DocOutput['errors'] = [];
+      try {
+        errors = await errorWriter.write(abi.errors);
+      } catch (err) {
+        console.warn(`Failed to generate error catalogue: ${err}`);
+        errors = abi.errors.map(e => ({
+          code: e.code,
+          name: e.name,
+          description: e.description || e.message || `${e.name} error`,
+          commonCauses: e.commonCauses || [],
+          remediation: e.remediation || '',
+        }));
       }
-    }
 
-    return result;
+      if (config.generateExamples) {
+        for (let i = 0; i < functions.length; i++) {
+          const fn = abi.functions[i]!;
+          const docFn = functions[i]!;
+          if (docFn) {
+            try {
+              docFn.examples = await exampleGenerator.generate(fn, docFn);
+            } catch (err) {
+              console.warn(`Failed to generate examples for ${fn.name}: ${err}`);
+            }
+          }
+        }
+      }
+
+      const result: DocOutput = {
+        contractName: abi.name,
+        overview,
+        functions,
+        events: abi.events.map(e => ({
+          name: e.name,
+          description: e.description || '',
+          topics: e.topics,
+          data: e.data,
+        })),
+        errors,
+      };
+
+      if (config.generateExamples) {
+        try {
+          const validation = await validator.validate(result);
+          if (!validation.valid) {
+            console.warn('DocEngine validation warnings:', validation.warnings);
+          }
+        } catch (err) {
+          console.warn(`Validation pass failed: ${err}`);
+        }
+      }
+
+      return result;
+    } catch (err) {
+      console.error(`AI Documentation engine critical failure: ${err}`);
+      return buildFallback(abi);
+    }
   }
 
   private async generateOverview(abi: ContractABI, config: AIPromptConfig): Promise<string> {

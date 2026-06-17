@@ -9,12 +9,13 @@ import {
   MarkdownRenderer,
   DocusaurusRenderer,
   OpenAPIRenderer,
+  ConfigFileSchema,
   type ContractABI,
   type DocOutput,
   type AIPromptConfig,
 } from '@sorodoc/core';
 
-function loadConfig(configPath?: string): Partial<{ ai: AIPromptConfig; output: { formats: string[]; sdks: string[]; outputDir: string } }> {
+function loadConfig(configPath?: string): any {
   if (!configPath) return {};
   const resolved = path.resolve(configPath);
   if (!fs.existsSync(resolved)) {
@@ -22,10 +23,19 @@ function loadConfig(configPath?: string): Partial<{ ai: AIPromptConfig; output: 
     return {};
   }
   try {
-    return JSON.parse(fs.readFileSync(resolved, 'utf8'));
-  } catch {
-    console.warn(`Invalid config file: ${configPath}`);
-    return {};
+    const rawConfig = JSON.parse(fs.readFileSync(resolved, 'utf8'));
+    const result = ConfigFileSchema.safeParse(rawConfig);
+    if (!result.success) {
+      console.error('Invalid configuration:');
+      result.error.issues.forEach((issue: any) => {
+        console.error(`  - ${issue.path.join('.')}: ${issue.message}`);
+      });
+      process.exit(1);
+    }
+    return result.data;
+  } catch (err) {
+    console.error(`Error reading config file: ${err}`);
+    process.exit(1);
   }
 }
 
@@ -65,10 +75,15 @@ function formatSize(dir: string): string {
       }
     }
   };
-  try { walk(dir); } catch { return '0 files'; }
-  const size = total > 1024 * 1024
-    ? `${(total / 1024 / 1024).toFixed(1)} MB`
-    : `${(total / 1024).toFixed(1)} KB`;
+  try {
+    walk(dir);
+  } catch {
+    return '0 files';
+  }
+  const size =
+    total > 1024 * 1024
+      ? `${(total / 1024 / 1024).toFixed(1)} MB`
+      : `${(total / 1024).toFixed(1)} KB`;
   return `${count} files, ${size}`;
 }
 
