@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
-import { UploadPanel } from './components/UploadPanel';
-import { PreviewPane } from './components/PreviewPane';
+import { UploadPanel } from './components/UploadPanel.tsx';
+import { PreviewPane } from './components/PreviewPane.tsx';
 
 function App() {
   const [contractData, setContractData] = useState<any>(null);

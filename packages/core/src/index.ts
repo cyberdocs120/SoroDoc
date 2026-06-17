@@ -1,4 +1,3 @@
-export * from './types.js';
 export { ABIParser } from './parser/ABIParser.js';
 export { SourceParser } from './parser/SourceParser.js';
 export { EventParser } from './parser/EventParser.js';
@@ -14,6 +13,8 @@ export { OpenAPIRenderer } from './renderers/OpenAPIRenderer.js';
 export { generateTypeScriptSDK, type TypeScriptSDKOptions } from './codegen/TypeScriptSDK.js';
 export { generatePythonSDK, type PythonSDKOptions } from './codegen/PythonSDK.js';
 export { generateRustClient, type RustClientOptions } from './codegen/RustClient.js';
+export { ConfigFileSchema, AIPromptConfigSchema, SorobanTypeSchema } from './types.js';
+export * from './types.js';
 
 import { ABIParser } from './parser/ABIParser.js';
 import { SourceParser } from './parser/SourceParser.js';
@@ -26,9 +27,9 @@ export function parseContract(options: ParseOptions): ContractABI {
   if (options.source) {
     const sourceParser = new SourceParser();
     const sourceDocs = sourceParser.parse(options.source);
-    
+
     // Enrich ABI with source docs
-    abi.functions.forEach(fn => {
+    abi.functions.forEach((fn) => {
       const entry = sourceDocs.functions.get(fn.name);
       if (entry) {
         fn.docs = entry.docs;
@@ -38,7 +39,7 @@ export function parseContract(options: ParseOptions): ContractABI {
       }
     });
 
-    abi.types.forEach(typeDef => {
+    abi.types.forEach((typeDef) => {
       const entry = sourceDocs.types.get(typeDef.name);
       if (entry) {
         typeDef.docs = entry.docs;
