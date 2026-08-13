@@ -17,7 +17,7 @@ SoroDoc is a monorepo managed with [Turborepo](https://turbo.build/) and `npm` w
 
 ### Prerequisites
 
-- Node.js >= 18.0.0
+- Node.js >= 20.9.0
 - npm >= 9.0.0
 - [Rust & Soroban CLI](https://soroban.stellar.org/docs/getting-started/setup) (for testing with actual contracts)
 

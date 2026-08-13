@@ -159,7 +159,7 @@ SoroDoc treats your **contract as the source of truth** and derives everything e
 
 ### Prerequisites
 
-- **Node.js** >= 18.x
+- **Node.js** >= 20.x
 - **Rust** >= 1.74 (for WASM compilation)
 - **Stellar CLI** >= 0.9.x — [Install guide](https://soroban.stellar.org/docs/getting-started/setup)
 - An **Anthropic API key** — [Get one here](https://console.anthropic.com)
@@ -874,7 +874,7 @@ jobs:
 
 ```yaml
 generate-docs:
-  image: node:18
+  image: node:20
   stage: docs
   script:
     - cargo build --target wasm32-unknown-unknown --release
