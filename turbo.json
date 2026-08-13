@@ -12,6 +12,7 @@
       "inputs": ["src/**", "tsconfig.json"]
     },
     "lint": {
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "typecheck": {
