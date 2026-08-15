@@ -8,6 +8,7 @@ import { FunctionDocWriter } from './FunctionDocWriter.js';
 import { ErrorDocWriter } from './ErrorDocWriter.js';
 import { ExampleGenerator } from './ExampleGenerator.js';
 import { ValidationPass } from './ValidationPass.js';
+import { EventDocWriter } from './EventDocWriter.js';
 
 export interface DocEngineOptions {
   apiKey?: string;
@@ -87,9 +88,10 @@ export class DocEngine {
     const functionWriter = new FunctionDocWriter(this.client, config);
     const errorWriter = new ErrorDocWriter(this.client, config);
     const exampleGenerator = new ExampleGenerator(this.client, config);
+    const eventWriter = new EventDocWriter(this.client, config);
     const validator = new ValidationPass(this.client);
 
-    const totalSteps = 1 + abi.functions.length + 1;
+    const totalSteps = 1 + abi.functions.length + 2;
 
     try {
       this.options.onProgress?.('overview', 0, totalSteps);
@@ -120,7 +122,21 @@ export class DocEngine {
         }
       }
 
-      this.options.onProgress?.('errors', 1 + abi.functions.length, totalSteps);
+      this.options.onProgress?.('events', 1 + abi.functions.length, totalSteps);
+      let events: DocOutput['events'] = [];
+      try {
+        events = await eventWriter.write(abi.events);
+      } catch (err) {
+        console.warn(`Failed to generate event documentation: ${err}`);
+        events = abi.events.map(e => ({
+          name: e.name,
+          description: e.description || '',
+          topics: e.topics,
+          data: e.data,
+        }));
+      }
+
+      this.options.onProgress?.('errors', 2 + abi.functions.length, totalSteps);
       let errors: DocOutput['errors'] = [];
       try {
         errors = await errorWriter.write(abi.errors);
@@ -153,12 +169,7 @@ export class DocEngine {
         contractName: abi.name,
         overview,
         functions,
-        events: abi.events.map(e => ({
-          name: e.name,
-          description: e.description || '',
-          topics: e.topics,
-          data: e.data,
-        })),
+        events,
         errors,
       };
 

@@ -146,6 +146,10 @@ async function runGenerate(opts: GenerateOptions): Promise<void> {
       onProgress: (phase, current, total) => {
         if (phase === 'functions') {
           aiSpinner.text = `Generating documentation for function ${current}/${total - 1}...`;
+        } else if (phase === 'events') {
+          aiSpinner.text = 'Documenting contract events...';
+        } else if (phase === 'errors') {
+          aiSpinner.text = 'Building error catalogue...';
         }
       },
     });

@@ -5,6 +5,7 @@ export { ErrorParser } from './parser/ErrorParser.js';
 export { DocEngine } from './ai/DocEngine.js';
 export { FunctionDocWriter } from './ai/FunctionDocWriter.js';
 export { ErrorDocWriter } from './ai/ErrorDocWriter.js';
+export { EventDocWriter } from './ai/EventDocWriter.js';
 export { ExampleGenerator } from './ai/ExampleGenerator.js';
 export { ValidationPass } from './ai/ValidationPass.js';
 export { MarkdownRenderer } from './renderers/MarkdownRenderer.js';

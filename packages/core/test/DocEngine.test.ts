@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DocEngine } from '../src/ai/DocEngine.js';
 import { FunctionDocWriter } from '../src/ai/FunctionDocWriter.js';
 import { ErrorDocWriter } from '../src/ai/ErrorDocWriter.js';
+import { EventDocWriter } from '../src/ai/EventDocWriter.js';
 import { ExampleGenerator } from '../src/ai/ExampleGenerator.js';
 import { ValidationPass } from '../src/ai/ValidationPass.js';
 import type { ContractABI, AIPromptConfig, DocFunction, DocError, FunctionSpec, ErrorSpec } from '../src/types.js';
@@ -349,6 +350,86 @@ describe('ErrorDocWriter', () => {
     expect(result[0]!.description).toBe('Insufficient balance error.');
     expect(result[0]!.commonCauses).toEqual(['Low funds']);
     expect(result[0]!.remediation).toBe('Add more tokens.');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// EventDocWriter
+// ---------------------------------------------------------------------------
+
+describe('EventDocWriter', () => {
+  it('returns empty array for no events', async () => {
+    const { Anthropic } = await import('@anthropic-ai/sdk');
+    const client = new Anthropic({ apiKey: 'test' });
+    const config = makeAIConfig({ enabled: true });
+    const writer = new EventDocWriter(client, config);
+
+    const result = await writer.write([]);
+    expect(result).toHaveLength(0);
+  });
+
+  it('returns fallback when AI call fails', async () => {
+    const mockCreate = vi.fn().mockRejectedValue(new Error('API error'));
+    const { Anthropic } = await import('@anthropic-ai/sdk');
+    const client = new Anthropic({ apiKey: 'test' });
+    vi.spyOn(client.messages, 'create').mockImplementation(mockCreate);
+
+    const config = makeAIConfig({ enabled: true });
+    const writer = new EventDocWriter(client, config);
+
+    const events = makeContractABI().events;
+    const result = await writer.write(events);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.name).toBe('Transfer');
+    expect(result[0]!.description).toBe('Emitted when tokens are transferred.');
+  });
+
+  it('parses AI response into DocEvent array with topic and data docs', async () => {
+    const aiResponse = JSON.stringify([
+      {
+        name: 'Transfer',
+        description: 'Emitted whenever tokens change owners.',
+        topics: [{ name: 'from', description: 'The sender of the tokens.' }],
+        data: [{ name: 'amount', description: 'The amount of tokens moved.' }],
+        example: 'const events = await server.getEvents({ filters: [...] });',
+      },
+    ]);
+    const mockCreate = vi.fn().mockResolvedValue({
+      content: [{ type: 'text', text: aiResponse }],
+    });
+    const { Anthropic } = await import('@anthropic-ai/sdk');
+    const client = new Anthropic({ apiKey: 'test' });
+    vi.spyOn(client.messages, 'create').mockImplementation(mockCreate);
+
+    const config = makeAIConfig({ enabled: true });
+    const writer = new EventDocWriter(client, config);
+
+    const events = makeContractABI().events;
+    const result = await writer.write(events);
+
+    expect(result[0]!.description).toBe('Emitted whenever tokens change owners.');
+    expect(result[0]!.topics[0]!.docs).toBe('The sender of the tokens.');
+    expect(result[0]!.data[0]!.docs).toBe('The amount of tokens moved.');
+    expect(result[0]!.example).toContain('server.getEvents');
+  });
+
+  it('falls back when AI returns incomplete JSON', async () => {
+    const mockCreate = vi.fn().mockResolvedValue({
+      content: [{ type: 'text', text: 'not json at all' }],
+    });
+    const { Anthropic } = await import('@anthropic-ai/sdk');
+    const client = new Anthropic({ apiKey: 'test' });
+    vi.spyOn(client.messages, 'create').mockImplementation(mockCreate);
+
+    const config = makeAIConfig({ enabled: true });
+    const writer = new EventDocWriter(client, config);
+
+    const events = makeContractABI().events;
+    const result = await writer.write(events);
+
+    expect(result[0]!.name).toBe('Transfer');
+    expect(result[0]!.description).toBe('Emitted when tokens are transferred.');
   });
 });
 
