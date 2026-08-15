@@ -1,6 +1,56 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { xdr } from '@stellar/stellar-sdk';
 import { createApp } from '../src/server.js';
 import { deleteWorkspace } from '../src/db/index.js';
+
+function makeInput(name: string, type: xdr.ScSpecTypeDef): xdr.ScSpecFunctionInputV0 {
+  const input = new xdr.ScSpecFunctionInputV0();
+  input.doc('');
+  input.name(name);
+  input.type(type);
+  return input;
+}
+
+function makeFunc(name: string, inputs: xdr.ScSpecFunctionInputV0[], outputs: xdr.ScSpecTypeDef[]): xdr.ScSpecFunctionV0 {
+  const func = new xdr.ScSpecFunctionV0();
+  func.doc('');
+  func.name(name);
+  func.inputs(inputs);
+  func.outputs(outputs);
+  return func;
+}
+
+function encodeLEB128(value: number): Buffer {
+  const bytes: number[] = [];
+  do {
+    let byte = value & 0x7f;
+    value >>= 7;
+    if (value !== 0) byte |= 0x80;
+    bytes.push(byte);
+  } while (value !== 0);
+  return Buffer.from(bytes);
+}
+
+function buildMinimalWasm(specEntries: xdr.ScSpecEntry[]): Buffer {
+  const specData = Buffer.concat(specEntries.map((e) => e.toXDR()));
+  const nameBuf = Buffer.from('contractspecv0', 'utf8');
+  const nameLen = encodeLEB128(nameBuf.length);
+  const sectionLen = encodeLEB128(nameLen.length + nameBuf.length + specData.length);
+  const sectionId = Buffer.from([0x00]);
+  const magic = Buffer.from([0x00, 0x61, 0x73, 0x6d]);
+  const version = Buffer.from([0x01, 0x00, 0x00, 0x00]);
+  return Buffer.concat([magic, version, sectionId, sectionLen, nameLen, nameBuf, specData]);
+}
+
+function makeWasm(): Buffer {
+  const entry = xdr.ScSpecEntry.scSpecEntryFunctionV0(
+    makeFunc('transfer', [
+      makeInput('to', xdr.ScSpecTypeDef.scSpecTypeAddress()),
+      makeInput('amount', xdr.ScSpecTypeDef.scSpecTypeI128()),
+    ], [xdr.ScSpecTypeDef.scSpecTypeVoid()]),
+  );
+  return buildMinimalWasm([entry]);
+}
 
 async function makeApp(enableAuth = false) {
   const app = createApp({ enableAuth });
@@ -151,11 +201,38 @@ describe('auth middleware', () => {
 });
 
 describe('generate routes', () => {
-  it('returns 501 for direct generate', async () => {
+  it('requires wasm on direct generate', async () => {
     const app = await makeApp();
-    const res = await app.inject({ method: 'POST', url: '/generate' });
-    expect(res.statusCode).toBe(501);
-    expect(res.json().error).toContain('not yet implemented');
+    const res = await app.inject({ method: 'POST', url: '/generate', payload: {} });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('wasm (base64-encoded) is required');
+    await app.close();
+  });
+
+  it('rejects empty wasm on direct generate', async () => {
+    const app = await makeApp();
+    const res = await app.inject({ method: 'POST', url: '/generate', payload: { wasm: '' } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('wasm must not be empty');
+    await app.close();
+  });
+
+  it('generates documentation from a base64 wasm', async () => {
+    const app = await makeApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/generate',
+      payload: {
+        wasm: makeWasm().toString('base64'),
+        contractName: 'Token',
+        formats: ['markdown', 'openapi'],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.contractName).toBe('Token');
+    expect(body.outputs.markdown).toBeTruthy();
+    expect(body.outputs.openapi).toBe('OpenAPI spec generated');
     await app.close();
   });
 
@@ -169,21 +246,40 @@ describe('generate routes', () => {
 
   it('validates network on deployed generation', async () => {
     const app = await makeApp();
-    const res = await app.inject({ method: 'POST', url: '/generate/deployed', payload: { contractId: 'abc' } });
+    const res = await app.inject({ method: 'POST', url: '/generate/deployed', payload: { contractId: 'abc', network: 'mars' } });
     expect(res.statusCode).toBe(400);
-    expect(res.json().error).toBe('network is required');
+    expect(res.json().error).toBe('network must be testnet or mainnet');
     await app.close();
   });
 
-  it('returns 501 for deployed generation', async () => {
-    const app = await makeApp();
+  it('fetches the deployed contract WASM and generates documentation', async () => {
+    const fetchWasm = async () => makeWasm();
+    const app = createApp({ fetchWasm });
     const res = await app.inject({
       method: 'POST',
       url: '/generate/deployed',
-      payload: { contractId: 'abc', network: 'testnet' },
+      payload: { contractId: 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2V2EQO2KQPV7R6R6VU', network: 'testnet', contractName: 'Token' },
     });
-    expect(res.statusCode).toBe(501);
-    expect(res.json().error).toContain('not yet implemented');
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.contractName).toBe('Token');
+    expect(body.outputs.markdown).toBeTruthy();
+    expect(body.outputs.openapi).toBeTruthy();
+    await app.close();
+  });
+
+  it('returns 502 when the WASM fetch fails', async () => {
+    const fetchWasm = async () => {
+      throw new Error('No WASM found for contract');
+    };
+    const app = createApp({ fetchWasm });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/generate/deployed',
+      payload: { contractId: 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2V2EQO2KQPV7R6R6VU', network: 'testnet' },
+    });
+    expect(res.statusCode).toBe(502);
+    expect(res.json().error).toContain('Failed to fetch contract WASM');
     await app.close();
   });
 });

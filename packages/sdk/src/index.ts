@@ -8,6 +8,7 @@ import {
   DocEngine,
   MarkdownRenderer,
   OpenAPIRenderer,
+  fetchContractWasm,
   type ContractABI,
   type DocOutput,
   type SDKOutput,
@@ -195,7 +196,23 @@ export class SoroDoc {
     return result;
   }
 
-  generateFromDeployed(opts: { contractId: string; network: SoroDocNetwork; contractName: string; options?: { sdks?: string[] } }) {
-    throw new Error('Live contract fetching not yet implemented');
+  async generateFromDeployed(opts: {
+    contractId: string;
+    network: SoroDocNetwork;
+    contractName: string;
+    options?: GenerateDocsOptions['options'];
+    rpcUrl?: string;
+  }): Promise<SoroDocResult> {
+    const wasm = await fetchContractWasm({
+      contractId: opts.contractId,
+      network: opts.network,
+      rpcUrl: opts.rpcUrl,
+    });
+
+    return this.generate({
+      wasm,
+      contractName: opts.contractName,
+      options: opts.options,
+    });
   }
 }

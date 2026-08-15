@@ -10,6 +10,8 @@ import {
   DocusaurusRenderer,
   OpenAPIRenderer,
   ConfigFileSchema,
+  fetchContractWasm,
+  getRpcUrl,
   type ContractABI,
   type DocOutput,
   type AIPromptConfig,
@@ -117,8 +119,18 @@ async function runGenerate(opts: GenerateOptions): Promise<void> {
     }
     wasmBuffer = fs.readFileSync(wasmPath);
   } else if (opts.contract) {
-    parseSpinner.fail('Live contract fetching not yet implemented');
-    process.exit(1);
+    const network = (opts.network === 'mainnet' ? 'mainnet' : 'testnet') as 'testnet' | 'mainnet';
+    parseSpinner.text = `Fetching contract ${opts.contract} from ${network}...`;
+    try {
+      wasmBuffer = await fetchContractWasm({
+        contractId: opts.contract,
+        network,
+        rpcUrl: getRpcUrl(network),
+      });
+    } catch (err) {
+      parseSpinner.fail(`Failed to fetch contract: ${err}`);
+      process.exit(1);
+    }
   }
 
   let abi: ContractABI;

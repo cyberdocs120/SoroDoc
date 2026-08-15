@@ -14,6 +14,14 @@ export { OpenAPIRenderer } from './renderers/OpenAPIRenderer.js';
 export { generateTypeScriptSDK, type TypeScriptSDKOptions } from './codegen/TypeScriptSDK.js';
 export { generatePythonSDK, type PythonSDKOptions } from './codegen/PythonSDK.js';
 export { generateRustClient, type RustClientOptions } from './codegen/RustClient.js';
+export {
+  fetchContractWasm,
+  isValidContractId,
+  getRpcUrl,
+  NETWORK_RPC_URLS,
+  type SorobanNetwork,
+  type FetchContractWasmOptions,
+} from './net/index.js';
 export { ConfigFileSchema, AIPromptConfigSchema, SorobanTypeSchema } from './types.js';
 export * from './types.js';
 

@@ -9,10 +9,11 @@ export interface AppOptions {
   port?: number;
   host?: string;
   enableAuth?: boolean;
+  fetchWasm?: (opts: { contractId: string; network: string }) => Promise<Buffer>;
 }
 
 export function createApp(options: AppOptions = {}) {
-  const { enableAuth = false } = options;
+  const { enableAuth = false, fetchWasm } = options;
 
   const app = Fastify({
     logger: {
@@ -33,7 +34,7 @@ export function createApp(options: AppOptions = {}) {
   app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
 
   app.register(workspaceRoutes);
-  app.register(generateRoutes);
+  app.register(generateRoutes, { fetchWasm });
 
   return app;
 }

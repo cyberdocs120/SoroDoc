@@ -1,9 +1,19 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { xdr } from '@stellar/stellar-sdk';
 import { SDKGenerator, SoroDoc, type SDKLanguage } from '../src/index.js';
+
+const { mockFetchContractWasm } = vi.hoisted(() => ({ mockFetchContractWasm: vi.fn() }));
+
+vi.mock('@sorodoc/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@sorodoc/core')>();
+  return {
+    ...actual,
+    fetchContractWasm: mockFetchContractWasm,
+  };
+});
 
 function makeABI() {
   return {
@@ -228,15 +238,37 @@ describe('SoroDoc', () => {
     expect(fs.existsSync(path.join(tmpDir, 'openapi.json'))).toBe(true);
   });
 
-  it('throws when fetching from a deployed contract is not yet implemented', () => {
+  it('fetches a deployed contract via Soroban RPC and generates docs', async () => {
+    mockFetchContractWasm.mockResolvedValue(wasm);
     const sorodoc = new SoroDoc();
 
-    expect(() =>
+    const result = await sorodoc.generateFromDeployed({
+      contractId: 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2V2EQO2KQPV7R6R6VU',
+      network: 'testnet',
+      contractName: 'Token',
+      options: { sdks: ['typescript'] },
+    });
+
+    expect(mockFetchContractWasm).toHaveBeenCalledWith({
+      contractId: 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2V2EQO2KQPV7R6R6VU',
+      network: 'testnet',
+      rpcUrl: undefined,
+    });
+    expect(result.functions).toHaveLength(1);
+    expect(result.functions[0]!.name).toBe('transfer');
+    expect(Object.keys(result.sdk)).toEqual(['typescript']);
+  });
+
+  it('propagates errors from the Soroban RPC fetch', async () => {
+    mockFetchContractWasm.mockRejectedValue(new Error('No WASM found for contract'));
+    const sorodoc = new SoroDoc();
+
+    await expect(
       sorodoc.generateFromDeployed({
         contractId: 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2V2EQO2KQPV7R6R6VU',
         network: 'testnet',
         contractName: 'Token',
       })
-    ).toThrow('Live contract fetching not yet implemented');
+    ).rejects.toThrow('No WASM found for contract');
   });
 });
