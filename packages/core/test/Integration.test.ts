@@ -95,4 +95,79 @@ pub fn transfer(e: Env, to: Address, amount: i128) {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('enriches events and errors from source doc comments', () => {
+    const funcEntry = xdr.ScSpecEntry.scSpecEntryFunctionV0(
+      makeFunc('transfer', [
+        makeInput('to', xdr.ScSpecTypeDef.scSpecTypeAddress()),
+        makeInput('amount', xdr.ScSpecTypeDef.scSpecTypeI128()),
+      ], [xdr.ScSpecTypeDef.scSpecTypeVoid()]),
+    );
+
+    const eventParam = new xdr.ScSpecEventParamV0();
+    eventParam.doc('');
+    eventParam.name('amount');
+    eventParam.type(xdr.ScSpecTypeDef.scSpecTypeI128());
+    eventParam.location(xdr.ScSpecEventParamLocationV0.scSpecEventParamLocationData());
+    const event = new xdr.ScSpecEventV0();
+    event.doc('');
+    event.lib('');
+    event.name('Transfer');
+    event.prefixTopics([Buffer.from('transfer', 'utf8')]);
+    event.params([eventParam]);
+    event.dataFormat(xdr.ScSpecEventDataFormat.scSpecEventDataFormatVec());
+    const eventEntry = xdr.ScSpecEntry.scSpecEntryEventV0(event);
+
+    const errorEnum = new xdr.ScSpecUdtErrorEnumV0();
+    errorEnum.doc('');
+    errorEnum.lib('');
+    errorEnum.name('ContractError');
+    const ec = new xdr.ScSpecUdtErrorEnumCaseV0();
+    ec.doc('');
+    ec.name('InsufficientBalance');
+    ec.value(1);
+    errorEnum.cases([ec]);
+    const errorEntry = xdr.ScSpecEntry.scSpecEntryUdtErrorEnumV0(errorEnum);
+
+    const wasm = buildMinimalWasm([funcEntry, eventEntry, errorEntry]);
+    const sourceContent = `
+/// Transfers tokens to a recipient.
+/// @sorodoc:event Transfer
+/// @sorodoc:event-description Emitted when tokens move between accounts.
+pub fn transfer(e: Env, to: Address, amount: i128) {
+    // implementation
+}
+
+#[contracterror]
+pub enum ContractError {
+    /// The sender does not have enough balance to complete the transfer.
+    InsufficientBalance,
+}
+`;
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sorodoc-test-'));
+    const sourcePath = path.join(tmpDir, 'lib.rs');
+    fs.writeFileSync(sourcePath, sourceContent);
+
+    try {
+      const result = parseContract({ wasm, source: sourcePath, contractName: 'TestContract' });
+
+      expect(result.events).toHaveLength(1);
+      expect(result.events[0]!.name).toBe('Transfer');
+      expect(result.events[0]!.description).toBe(
+        'Emitted when tokens move between accounts.',
+      );
+
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]!.name).toBe('InsufficientBalance');
+      expect(result.errors[0]!.description).toBe(
+        'The sender does not have enough balance to complete the transfer.',
+      );
+      expect(result.errors[0]!.message).toBe(
+        'The sender does not have enough balance to complete the transfer.',
+      );
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });

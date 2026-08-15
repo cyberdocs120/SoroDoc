@@ -48,7 +48,22 @@ export function parseContract(options: ParseOptions): ContractABI {
       }
     });
 
-    // TODO: Enrich events and errors if they can be mapped from source
+    // Enrich events with descriptions from @sorodoc:event / @sorodoc:event-description tags
+    abi.events.forEach((evt) => {
+      const entry = sourceDocs.events.get(evt.name);
+      if (entry?.docs) {
+        evt.description = entry.docs;
+      }
+    });
+
+    // Enrich errors with doc comments from the contract error enum
+    abi.errors.forEach((err) => {
+      const entry = sourceDocs.errors.get(err.name);
+      if (entry?.docs) {
+        err.description = entry.docs;
+        err.message = entry.docs;
+      }
+    });
   }
 
   return abi;

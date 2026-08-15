@@ -15,6 +15,8 @@ export interface DocEntry {
   isHighlighted?: boolean;
   params?: Map<string, string>;
   returns?: string;
+  event?: string;
+  eventDescription?: string;
 }
 
 export class SourceParser {
@@ -33,6 +35,7 @@ export class SourceParser {
 
     const lines = content.split('\n');
     let currentDocs: string[] = [];
+    let inEnum = false;
 
     for (let i = 0; i < lines.length; i++) {
       const raw = lines[i];
@@ -48,24 +51,39 @@ export class SourceParser {
         if (line === '' || line.startsWith('//') || line.startsWith('#[')) {
           continue;
         }
+      }
 
+      const enumDecl = line.match(/(?:pub\s+)?enum\s+(\w+)/);
+      if (enumDecl && !inEnum) {
+        inEnum = true;
+      }
+      if (inEnum && line.includes('}')) {
+        inEnum = false;
+      }
+
+      if (currentDocs.length > 0) {
         const entry = this.processDocBlock(currentDocs);
-        
+
         const fnMatch = line.match(/pub\s+fn\s+(\w+)/);
         if (fnMatch && fnMatch[1]) {
+          if (entry.event) {
+            docs.events.set(entry.event, { docs: entry.eventDescription || entry.docs });
+          }
           docs.functions.set(fnMatch[1], entry);
+        } else if (enumDecl && enumDecl[1]) {
+          docs.types.set(enumDecl[1], entry);
         } else {
           const structMatch = line.match(/pub\s+struct\s+(\w+)/);
           if (structMatch && structMatch[1]) {
             docs.types.set(structMatch[1], entry);
-          } else {
-            const enumMatch = line.match(/pub\s+enum\s+(\w+)/);
-            if (enumMatch && enumMatch[1]) {
-              docs.types.set(enumMatch[1], entry);
+          } else if (inEnum) {
+            const variantMatch = line.match(/^(\w+)/);
+            if (variantMatch && variantMatch[1]) {
+              docs.errors.set(variantMatch[1], entry);
             }
           }
         }
-        
+
         currentDocs = [];
       }
     }
@@ -86,6 +104,10 @@ export class SourceParser {
         entry.since = line.split('@sorodoc:since')[1]?.trim() ?? '';
       } else if (line.includes('@sorodoc:example-highlight')) {
         entry.isHighlighted = true;
+      } else if (line.includes('@sorodoc:event-description')) {
+        entry.eventDescription = line.split('@sorodoc:event-description')[1]?.trim() ?? '';
+      } else if (line.includes('@sorodoc:event')) {
+        entry.event = line.split('@sorodoc:event')[1]?.trim().split(/\s+/)[0] ?? '';
       } else {
         cleanLines.push(line);
       }
