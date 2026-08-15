@@ -21,30 +21,67 @@ function loadConfig(configPath?: string): any {
   if (!configPath) return {};
   const resolved = path.resolve(configPath);
   if (!fs.existsSync(resolved)) {
-    console.warn(`Config file not found: ${configPath}`);
-    return {};
+    throw new Error(`Config file not found: ${configPath}`);
   }
-  try {
-    const rawConfig = JSON.parse(fs.readFileSync(resolved, 'utf8'));
-    const result = ConfigFileSchema.safeParse(rawConfig);
-    if (!result.success) {
-      console.error('Invalid configuration:');
-      result.error.issues.forEach((issue: any) => {
-        console.error(`  - ${issue.path.join('.')}: ${issue.message}`);
-      });
-      process.exit(1);
-    }
-    return result.data;
-  } catch (err) {
-    console.error(`Error reading config file: ${err}`);
-    process.exit(1);
+  const rawConfig = JSON.parse(fs.readFileSync(resolved, 'utf8'));
+  const result = ConfigFileSchema.safeParse(rawConfig);
+  if (!result.success) {
+    const issues = result.error.issues.map((issue: any) => `  - ${issue.path.join('.')}: ${issue.message}`).join('\n');
+    throw new Error(`Invalid configuration:\n${issues}`);
   }
+  return result.data;
 }
 
-function resolveOutDir(flag?: string, configDir?: string): string {
+export function resolveOutDir(flag?: string, outputSetting?: string, configPath?: string): string {
   if (flag) return path.resolve(flag);
-  if (configDir) return path.resolve(configDir);
+  if (outputSetting) {
+    if (path.isAbsolute(outputSetting)) return outputSetting;
+    if (configPath) return path.resolve(path.dirname(configPath), outputSetting);
+    return path.resolve(outputSetting);
+  }
+  if (configPath) return path.resolve(path.dirname(configPath));
   return path.resolve('./docs');
+}
+
+export interface ContractTarget {
+  name: string;
+  wasm?: string;
+  source?: string;
+  contractId?: string;
+  network?: 'testnet' | 'mainnet';
+}
+
+export function slugify(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'contract';
+}
+
+export function resolveContracts(opts: GenerateOptions, config: any, configPath?: string): ContractTarget[] {
+  const resolveRel = (p: string) =>
+    path.isAbsolute(p) ? p : configPath ? path.resolve(path.dirname(configPath), p) : path.resolve(p);
+
+  if (opts.wasm || opts.contract) {
+    return [
+      {
+        name: opts.name || 'contract',
+        wasm: opts.wasm ? resolveRel(opts.wasm) : undefined,
+        source: opts.source ? resolveRel(opts.source) : undefined,
+        contractId: opts.contract,
+        network: opts.network === 'mainnet' ? 'mainnet' : 'testnet',
+      },
+    ];
+  }
+
+  if (config?.contracts?.length) {
+    return config.contracts.map((c: any) => ({
+      name: c.name,
+      wasm: c.wasm ? resolveRel(c.wasm) : undefined,
+      source: c.source ? resolveRel(c.source) : undefined,
+      contractId: c.deployedId?.mainnet || c.deployedId?.testnet,
+      network: c.deployedId?.mainnet && !c.deployedId?.testnet ? 'mainnet' : 'testnet',
+    }));
+  }
+
+  return [];
 }
 
 interface GenerateOptions {
@@ -89,11 +126,99 @@ function formatSize(dir: string): string {
   return `${count} files, ${size}`;
 }
 
-async function runGenerate(opts: GenerateOptions): Promise<void> {
-  const startTime = Date.now();
-  const config = loadConfig(opts.config);
-  const outputDir = resolveOutDir(opts.out, config.output?.outputDir);
+async function parseTarget(target: ContractTarget, parseSpinner: Ora): Promise<Buffer> {
+  if (target.wasm) {
+    if (!fs.existsSync(target.wasm)) {
+      throw new Error(`WASM file not found: ${target.wasm}`);
+    }
+    return fs.readFileSync(target.wasm);
+  }
+  if (target.contractId) {
+    parseSpinner.text = `Fetching contract ${target.contractId} from ${target.network}...`;
+    return fetchContractWasm({
+      contractId: target.contractId,
+      network: target.network ?? 'testnet',
+      rpcUrl: getRpcUrl(target.network ?? 'testnet'),
+    });
+  }
+  throw new Error(`No WASM or contract ID specified for "${target.name}"`);
+}
+
+function renderTarget(
+  docOutput: DocOutput,
+  abi: ContractABI,
+  outputDir: string,
+  target: ContractTarget,
+  opts: GenerateOptions,
+  config: any,
+): string[] {
   const formats = config.output?.formats ?? ['markdown', 'docusaurus', 'openapi'];
+  const results: string[] = [];
+  const contractId = target.contractId || opts.contract;
+  const network = target.network || opts.network;
+
+  if (formats.includes('markdown')) {
+    const mdRenderer = new MarkdownRenderer({
+      outputDir,
+      contractId,
+      network,
+    });
+    mdRenderer.render(docOutput);
+    results.push(`Markdown  →  ${path.join(outputDir, 'markdown')}`);
+  }
+
+  if (formats.includes('docusaurus')) {
+    const dsRenderer = new DocusaurusRenderer({
+      outputDir,
+      contractId,
+      network,
+      projectName: opts.name || target.name || abi.name,
+      tagline: `${abi.name} — Soroban Smart Contract`,
+    });
+    dsRenderer.render(docOutput);
+    results.push(`Docusaurus  →  ${path.join(outputDir, 'docusaurus')}`);
+  }
+
+  if (formats.includes('openapi')) {
+    const oaRenderer = new OpenAPIRenderer({
+      outputDir,
+      contractId,
+      network,
+    });
+    oaRenderer.render(docOutput);
+    results.push(`OpenAPI spec →  ${path.join(outputDir, 'openapi.yaml')}`);
+  }
+
+  return results;
+}
+
+async function generateContract(
+  target: ContractTarget,
+  opts: GenerateOptions,
+  config: any,
+  outputDir: string,
+): Promise<{ abi: ContractABI; docOutput: DocOutput; results: string[] }> {
+  // Phase 1: Parse contract ABI
+  const parseSpinner: Ora = ora(`Parsing ${target.name}...`).start();
+  let wasmBuffer: Buffer;
+  let abi: ContractABI;
+  try {
+    wasmBuffer = await parseTarget(target, parseSpinner);
+    abi = parseContract({
+      wasm: wasmBuffer,
+      source: target.source,
+      contractName: target.name,
+    });
+  } catch (err) {
+    parseSpinner.fail(`Failed to parse ${target.name}: ${err}`);
+    throw err;
+  }
+
+  parseSpinner.succeed(
+    `${target.name}: ${abi.functions.length} function${abi.functions.length !== 1 ? 's' : ''}, ${abi.events.length} event${abi.events.length !== 1 ? 's' : ''}, ${abi.errors.length} error code${abi.errors.length !== 1 ? 's' : ''}`,
+  );
+
+  // Phase 2: AI documentation engine
   const aiConfig: AIPromptConfig = config.ai ?? {
     enabled: true,
     model: 'claude-sonnet-4-20250514',
@@ -102,56 +227,7 @@ async function runGenerate(opts: GenerateOptions): Promise<void> {
     exampleLanguages: ['typescript', 'python', 'rust'],
   };
 
-  // Phase 1: Parse contract ABI
-  const parseSpinner: Ora = ora('Parsing contract ABI...').start();
-
-  if (!opts.wasm && !opts.contract) {
-    parseSpinner.fail('Either --wasm or --contract is required');
-    process.exit(1);
-  }
-
-  let wasmBuffer: Buffer | undefined;
-  if (opts.wasm) {
-    const wasmPath = path.resolve(opts.wasm);
-    if (!fs.existsSync(wasmPath)) {
-      parseSpinner.fail(`WASM file not found: ${wasmPath}`);
-      process.exit(1);
-    }
-    wasmBuffer = fs.readFileSync(wasmPath);
-  } else if (opts.contract) {
-    const network = (opts.network === 'mainnet' ? 'mainnet' : 'testnet') as 'testnet' | 'mainnet';
-    parseSpinner.text = `Fetching contract ${opts.contract} from ${network}...`;
-    try {
-      wasmBuffer = await fetchContractWasm({
-        contractId: opts.contract,
-        network,
-        rpcUrl: getRpcUrl(network),
-      });
-    } catch (err) {
-      parseSpinner.fail(`Failed to fetch contract: ${err}`);
-      process.exit(1);
-    }
-  }
-
-  let abi: ContractABI;
-  try {
-    abi = parseContract({
-      wasm: wasmBuffer!,
-      source: opts.source ? path.resolve(opts.source) : undefined,
-      contractName: opts.name,
-    });
-  } catch (err) {
-    parseSpinner.fail(`Failed to parse contract: ${err}`);
-    process.exit(1);
-  }
-
-  parseSpinner.succeed(
-    `Found ${abi.functions.length} function${abi.functions.length !== 1 ? 's' : ''}, ${abi.events.length} event${abi.events.length !== 1 ? 's' : ''}, ${abi.errors.length} error code${abi.errors.length !== 1 ? 's' : ''}`,
-  );
-
-  // Phase 2: AI documentation engine
   const aiSpinner: Ora = ora('Running AI documentation engine...').start();
-
   let docOutput: DocOutput;
   try {
     const engine = new DocEngine({
@@ -168,7 +244,7 @@ async function runGenerate(opts: GenerateOptions): Promise<void> {
     docOutput = await engine.generate(abi, aiConfig);
   } catch (err) {
     aiSpinner.fail(`AI documentation failed: ${err}`);
-    process.exit(1);
+    throw err;
   }
 
   aiSpinner.succeed(
@@ -177,56 +253,70 @@ async function runGenerate(opts: GenerateOptions): Promise<void> {
 
   // Phase 3: Render output
   const renderSpinner: Ora = ora('Rendering documentation...').start();
-
-  const renderStart = Date.now();
-  let renderedCount = 0;
-  const results: string[] = [];
-
+  let results: string[];
   try {
-    if (formats.includes('markdown')) {
-      const mdRenderer = new MarkdownRenderer({
-        outputDir,
-        contractId: opts.contract,
-        network: opts.network,
-      });
-      const result = mdRenderer.render(docOutput);
-      results.push(`Markdown  →  ${path.join(outputDir, 'markdown')}`);
-      renderedCount++;
-    }
-
-    if (formats.includes('docusaurus')) {
-      const dsRenderer = new DocusaurusRenderer({
-        outputDir,
-        contractId: opts.contract,
-        network: opts.network,
-        projectName: opts.name || abi.name,
-        tagline: `${abi.name} — Soroban Smart Contract`,
-      });
-      const result = dsRenderer.render(docOutput);
-      results.push(`Docusaurus  →  ${path.join(outputDir, 'docusaurus')}`);
-      renderedCount++;
-    }
-
-    if (formats.includes('openapi')) {
-      const oaRenderer = new OpenAPIRenderer({
-        outputDir,
-        contractId: opts.contract,
-        network: opts.network,
-      });
-      const result = oaRenderer.render(docOutput);
-      results.push(`OpenAPI spec →  ${path.join(outputDir, 'openapi.yaml')}`);
-      renderedCount++;
-    }
+    results = renderTarget(docOutput, abi, outputDir, target, opts, config);
   } catch (err) {
     renderSpinner.fail(`Rendering failed: ${err}`);
-    process.exit(1);
+    throw err;
+  }
+  renderSpinner.succeed(`Rendered ${results.length} format${results.length !== 1 ? 's' : ''}`);
+
+  return { abi, docOutput, results };
+}
+
+function writeIndex(config: any, targets: ContractTarget[], outputDir: string): void {
+  const lines: string[] = [];
+  const projectName = config.project?.name ?? 'SoroDoc';
+  const description = config.project?.description ?? 'Generated Soroban smart contract documentation';
+  lines.push(`# ${projectName}`);
+  lines.push('');
+  lines.push(description);
+  lines.push('');
+  lines.push(`Generated on ${new Date().toLocaleString()}`);
+  lines.push('');
+  lines.push('## Contracts');
+  lines.push('');
+  for (const target of targets) {
+    lines.push(`- [${target.name}](./${slugify(target.name)}/markdown/index.md)`);
+  }
+  lines.push('');
+  fs.writeFileSync(path.join(outputDir, 'README.md'), lines.join('\n'), 'utf8');
+}
+
+export async function runGenerate(opts: GenerateOptions): Promise<void> {
+  const startTime = Date.now();
+  const config = loadConfig(opts.config);
+  const outputDir = resolveOutDir(opts.out, config.output?.outputDir, opts.config);
+  const targets = resolveContracts(opts, config, opts.config);
+
+  if (targets.length === 0) {
+    throw new Error('No contracts specified. Use --wasm, --contract, or configure contracts in sorodoc.config.json.');
   }
 
-  renderSpinner.succeed(`Rendered ${renderedCount} format${renderedCount !== 1 ? 's' : ''}`);
+  const singleFlagTarget = opts.wasm || opts.contract;
+  const allResults: string[] = [];
+  const renderedDirs: Array<{ name: string; dir: string }> = [];
+
+  console.log('');
+  for (const target of targets) {
+    console.log(`  📦 Generating documentation for "${target.name}"`);
+    const targetOutDir = singleFlagTarget
+      ? outputDir
+      : path.join(outputDir, slugify(target.name));
+    const { results } = await generateContract(target, opts, config, targetOutDir);
+    for (const line of results) allResults.push(line);
+    renderedDirs.push({ name: target.name, dir: targetOutDir });
+  }
+
+  if (!singleFlagTarget) {
+    writeIndex(config, targets, outputDir);
+    allResults.push(`Index  →  ${path.join(outputDir, 'README.md')}`);
+  }
 
   // Summary
   const totalTime = Date.now() - startTime;
-  for (const line of results) {
+  for (const line of allResults) {
     console.log(`   ✅ ${line}`);
   }
   console.log('');
@@ -245,7 +335,13 @@ export const generateCommand = new Command('generate')
   .option('--config <path>', 'Path to sorodoc config file')
   .option('--watch', 'Watch mode — regenerate on file changes')
   .action(async (opts) => {
-    await runGenerate(opts);
+    try {
+      await runGenerate(opts);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`Error: ${message}`);
+      process.exit(1);
+    }
 
     if (opts.watch) {
       const watchPaths: string[] = [];
