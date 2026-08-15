@@ -32,7 +32,8 @@ export class OpenAPIRenderer {
     };
   }
 
-  private buildSpec(output: DocOutput): Record<string, unknown> {
+  /** Build the OpenAPI 3.1 spec object without touching disk. */
+  buildSpec(output: DocOutput): Record<string, unknown> {
     const serverUrl = this.options.serverUrl
       || (this.options.network === 'mainnet'
         ? 'https://soroban-rpc.mainnet.stellar.org'

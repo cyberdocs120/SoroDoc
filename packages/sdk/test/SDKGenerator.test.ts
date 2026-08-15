@@ -1,4 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
 import { xdr } from '@stellar/stellar-sdk';
 import { SDKGenerator, SoroDoc, type SDKLanguage } from '../src/index.js';
 
@@ -131,10 +134,20 @@ describe('SoroDoc', () => {
     xdr.ScSpecEntry.scSpecEntryFunctionV0(makeFunc('transfer')),
   ]);
 
-  it('generates docs and requested SDKs', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sorodoc-sdk-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('generates docs and requested SDKs', async () => {
     const sorodoc = new SoroDoc();
 
-    const result = sorodoc.generate({
+    const result = await sorodoc.generate({
       wasm,
       contractName: 'Token',
       options: { sdks: ['typescript', 'python'] },
@@ -145,15 +158,74 @@ describe('SoroDoc', () => {
     expect(Object.keys(result.sdk)).toEqual(['typescript', 'python']);
   });
 
-  it('returns an empty sdk map when no SDKs requested', () => {
+  it('returns an empty sdk map when no SDKs requested', async () => {
     const sorodoc = new SoroDoc();
 
-    const result = sorodoc.generate({
+    const result = await sorodoc.generate({
       wasm,
       contractName: 'Token',
     });
 
     expect(result.sdk).toEqual({});
+  });
+
+  it('returns AI documentation output and markdown', async () => {
+    const sorodoc = new SoroDoc();
+
+    const result = await sorodoc.generate({
+      wasm,
+      contractName: 'Token',
+    });
+
+    expect(result.docs.contractName).toBe('Token');
+    expect(result.docs.overview).toContain('Soroban');
+    expect(result.docs.functions).toHaveLength(1);
+    expect(result.docs.markdown).toContain('# Token');
+    expect(result.markdownFiles.has('index.md')).toBe(true);
+    expect(result.markdownFiles.has('functions/transfer.md')).toBe(true);
+  });
+
+  it('returns an OpenAPI 3.1 spec', async () => {
+    const sorodoc = new SoroDoc();
+
+    const result = await sorodoc.generate({
+      wasm,
+      contractName: 'Token',
+    });
+
+    expect(result.openapi).not.toBeNull();
+    expect(result.openapi!['openapi']).toBe('3.1.0');
+    expect(result.openapi!['paths']).toHaveProperty('/invoke/transfer');
+  });
+
+  it('skips the OpenAPI spec when openapi is disabled', async () => {
+    const sorodoc = new SoroDoc();
+
+    const result = await sorodoc.generate({
+      wasm,
+      contractName: 'Token',
+      options: { openapi: false },
+    });
+
+    expect(result.openapi).toBeNull();
+  });
+
+  it('writeTo writes markdown, SDKs, and openapi to a directory', async () => {
+    const sorodoc = new SoroDoc();
+
+    const result = await sorodoc.generate({
+      wasm,
+      contractName: 'Token',
+      options: { sdks: ['typescript'] },
+    });
+
+    await result.writeTo(tmpDir);
+
+    expect(fs.existsSync(path.join(tmpDir, 'markdown/index.md'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'markdown/functions/transfer.md'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'sdk/typescript/index.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'sdk/typescript/README.md'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'openapi.json'))).toBe(true);
   });
 
   it('throws when fetching from a deployed contract is not yet implemented', () => {

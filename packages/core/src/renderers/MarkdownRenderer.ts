@@ -22,6 +22,24 @@ export class MarkdownRenderer {
     fs.mkdirSync(path.join(baseDir, 'errors'), { recursive: true });
     fs.mkdirSync(path.join(baseDir, 'sdk'), { recursive: true });
 
+    const files = this.buildFiles(output);
+
+    for (const [filePath, content] of files) {
+      const fullPath = path.join(baseDir, filePath);
+      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+      fs.writeFileSync(fullPath, content, 'utf8');
+    }
+
+    const fileCount = files.size;
+
+    return {
+      docs: output,
+      markdown: `Generated ${fileCount} markdown files in ${baseDir}`,
+    };
+  }
+
+  /** Build the full markdown output as a Map<relativePath, content> without touching disk. */
+  buildFiles(output: DocOutput): Map<string, string> {
     const files: Map<string, string> = new Map();
 
     files.set('index.md', this.renderOverview(output));
@@ -37,18 +55,7 @@ export class MarkdownRenderer {
 
     files.set('errors/error-reference.md', this.renderErrorReference(output.errors));
 
-    for (const [filePath, content] of files) {
-      const fullPath = path.join(baseDir, filePath);
-      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-      fs.writeFileSync(fullPath, content, 'utf8');
-    }
-
-    const fileCount = files.size;
-
-    return {
-      docs: output,
-      markdown: `Generated ${fileCount} markdown files in ${baseDir}`,
-    };
+    return files;
   }
 
   private renderOverview(output: DocOutput): string {
