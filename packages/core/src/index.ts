@@ -14,6 +14,7 @@ export { OpenAPIRenderer } from './renderers/OpenAPIRenderer.js';
 export { generateTypeScriptSDK, type TypeScriptSDKOptions } from './codegen/TypeScriptSDK.js';
 export { generatePythonSDK, type PythonSDKOptions } from './codegen/PythonSDK.js';
 export { generateRustClient, type RustClientOptions } from './codegen/RustClient.js';
+export { generateReactHooks, type ReactHooksOptions } from './codegen/ReactHooks.js';
 export {
   fetchContractWasm,
   isValidContractId,

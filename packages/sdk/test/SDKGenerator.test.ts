@@ -120,6 +120,17 @@ describe('SDKGenerator', () => {
     expect(output.files.get('src/lib.rs')).toContain('pub struct TokenClient');
   });
 
+  it('generates React hooks', () => {
+    const generator = new SDKGenerator({ abi, language: 'react' });
+
+    const output = generator.generate('react');
+
+    expect(output.files).toBeInstanceOf(Map);
+    expect(output.files.has('hooks.tsx')).toBe(true);
+    expect(output.files.get('hooks.tsx')).toContain('useTransfer');
+    expect(output.files.get('hooks.tsx')).toContain('useContractCall');
+  });
+
   it('applies the provided package name', () => {
     const generator = new SDKGenerator({ abi, packageName: '@custom/token-sdk' });
 

@@ -5,6 +5,7 @@ import {
   generateTypeScriptSDK,
   generatePythonSDK,
   generateRustClient,
+  generateReactHooks,
   DocEngine,
   MarkdownRenderer,
   OpenAPIRenderer,
@@ -15,7 +16,7 @@ import {
   type AIPromptConfig,
 } from '@sorodoc/core';
 
-export type SDKLanguage = 'typescript' | 'python' | 'rust';
+export type SDKLanguage = 'typescript' | 'python' | 'rust' | 'react';
 export type SoroDocNetwork = 'testnet' | 'mainnet';
 
 export interface SDKGeneratorOptions {
@@ -106,6 +107,15 @@ export class SDKGenerator {
           abi: opts.abi,
           docOutput: opts.docOutput,
           packageName: opts.packageName || `${opts.abi.name.toLowerCase()}-client`,
+          version: opts.version,
+          network: opts.network,
+          contractId: opts.contractId,
+        });
+      case 'react':
+        return generateReactHooks({
+          abi: opts.abi,
+          docOutput: opts.docOutput,
+          packageName: opts.packageName || `@sorodoc/${opts.abi.name.toLowerCase()}-react`,
           version: opts.version,
           network: opts.network,
           contractId: opts.contractId,
