@@ -7,7 +7,7 @@ image:
 
 service:
   type: ClusterIP
-  port: 3000
+  port: 3001
 
 ingress:
   enabled: false
@@ -39,7 +39,11 @@ tolerations: []
 affinity: {}
 
 env:
-  ANTHROPIC_API_KEY: ""
-  DATABASE_URL: "postgres://user:pass@postgres:5432/sorodoc"
-  REDIS_URL: "redis://redis:6379"
-  JWT_SECRET: "change-me"
+  NODE_ENV: "production"
+  PORT: "3001"
+
+secrets:
+  anthropicApiKey: ""
+  jwtSecret: "change-me-in-production"
+  databaseUrl: "postgres://sorodoc:sorodoc@postgres:5432/sorodoc"
+  redisUrl: "redis://redis:6379"
