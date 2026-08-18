@@ -53,7 +53,7 @@ function makeWasm(): Buffer {
 }
 
 async function makeApp(enableAuth = false) {
-  const app = createApp({ enableAuth });
+  const app = await createApp({ enableAuth });
   return app;
 }
 
@@ -180,7 +180,7 @@ describe('auth middleware', () => {
     const app = await makeApp(true);
     const res = await app.inject({ method: 'GET', url: '/health' });
     expect(res.statusCode).toBe(401);
-    expect(res.json().error).toBe('Missing or invalid authorization header');
+    expect(res.json().error).toBe('Unauthorized');
     await app.close();
   });
 
@@ -188,13 +188,14 @@ describe('auth middleware', () => {
     const app = await makeApp(true);
     const res = await app.inject({ method: 'GET', url: '/health', headers: { authorization: 'Bearer wrong-token' } });
     expect(res.statusCode).toBe(401);
-    expect(res.json().error).toBe('Invalid token');
+    expect(res.json().error).toBe('Unauthorized');
     await app.close();
   });
 
-  it('accepts the dev token', async () => {
+  it('accepts a valid JWT token', async () => {
     const app = await makeApp(true);
-    const res = await app.inject({ method: 'GET', url: '/health', headers: { authorization: 'Bearer sorodoc-dev-token' } });
+    const token = app.jwt.sign({ id: 'test-user', email: 'test@test.com', role: 'user' });
+    const res = await app.inject({ method: 'GET', url: '/health', headers: { authorization: `Bearer ${token}` } });
     expect(res.statusCode).toBe(200);
     await app.close();
   });
@@ -254,7 +255,7 @@ describe('generate routes', () => {
 
   it('fetches the deployed contract WASM and generates documentation', async () => {
     const fetchWasm = async () => makeWasm();
-    const app = createApp({ fetchWasm });
+    const app = await createApp({ fetchWasm });
     const res = await app.inject({
       method: 'POST',
       url: '/generate/deployed',
@@ -272,7 +273,7 @@ describe('generate routes', () => {
     const fetchWasm = async () => {
       throw new Error('No WASM found for contract');
     };
-    const app = createApp({ fetchWasm });
+    const app = await createApp({ fetchWasm });
     const res = await app.inject({
       method: 'POST',
       url: '/generate/deployed',
