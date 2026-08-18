@@ -9,9 +9,11 @@ export interface ValidationResult {
 export class ValidationPass {
   private client: Anthropic;
   private maxRetries = 2;
+  private model: string;
 
-  constructor(client: Anthropic) {
+  constructor(client: Anthropic, model?: string) {
     this.client = client;
+    this.model = model || 'claude-sonnet-4-20250514';
   }
 
   async validate(output: DocOutput): Promise<ValidationResult> {
@@ -30,7 +32,7 @@ export class ValidationPass {
 
   private async attemptValidate(output: DocOutput): Promise<ValidationResult> {
     const response = await this.client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: this.model,
       max_tokens: 1024,
       system: `You are a documentation quality assurance reviewer. Check the generated documentation for consistency and correctness.
 Report any issues you find. Be concise.`,

@@ -89,7 +89,7 @@ export class DocEngine {
     const errorWriter = new ErrorDocWriter(this.client, config);
     const exampleGenerator = new ExampleGenerator(this.client, config);
     const eventWriter = new EventDocWriter(this.client, config);
-    const validator = new ValidationPass(this.client);
+    const validator = new ValidationPass(this.client, config.model);
 
     const totalSteps = 1 + abi.functions.length + 2;
 
